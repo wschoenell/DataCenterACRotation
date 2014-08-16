@@ -26,45 +26,84 @@ dht11 DHT11;
 /*
 		CONFIGURATIONS
 */
+
+// PIN DEFINITIONS
 #define BUTTON1PIN 0
-
 #define DHT11PIN 2
-
 #define AC1PIN 9
 #define AC2PIN 8
 
-int temp_low = EEPROM.read(0); // oC
-int temp_upp = EEPROM.read(1); // oC
+// SYSTEM PROTECTIONS
+#define TEMPERATURE_T0 240000 // Will wait 4 minutes to start check the temperature. In case of reset, we should give few minutes to the compressors.
+#define ROTATION_T0 300000 // Will wait 5 minutes to start the ACs. Same as above.
+#define MINIMUM_OVERHEAT_TIME 1800000 // In case of a temperature overheating, temperature check will be disabled for 30min.
 
-long temperatureInterval = EEPROM.read(2) * 1000; // in seconds
-long rotationInterval = EEPROM.read(3) * 3600000 + EEPROM.read(4) * 60000; // hours + minutes
+//EEPROM ADDRESSES
+#define TEMP_LOW_ADDR 0  // degrees Celsius
+#define TEMP_UPP_ADDR 1  // degrees Celsius
+#define TEMP_INTERVAL_ADDR 2  // seconds
+#define ROTATION_INTERVAL_H_ADDR 3 // hours
+#define ROTATION_INTERVAL_M_ADDR 4 // minutes
 
 /*
 		MISC VARIABLES
 */
 
 // Variables to the EthernetServer
-  EthernetServer server(80); 
-String read_string = String(50); //string for fetching data from address
+EthernetServer server(80);
 String cmd = String(10);
 String arg = String(10);
-String arg1 = String(5);
-String arg2 = String(5);
-byte ind1 = 0;
-byte ind2 = 0;
+byte cmd_status; // Status of the requested command. 0 = No requested command. 1 = Success. 2 = Fail. 3 = Unknown command.
 ///////////////////////
 
-byte cmd_status; // Status of the requested command. 0 = No requested command. 1 = Success. 2 = Fail. 3 = Unknown command.
-long time_now;
+
+
+boolean ac_all = false; // If true, will START with both engines.
 long temperatureTime; // next millis() which should check the temperature
 long rotationTime; // next millis() which should rotate the ACs
-boolean ac_all = false; // If true, will START with both engines.
-int ac_now = 1; // Will start with engine 0
+byte ac_now = 1; // Will start with engine 0
 byte chk; // To DHT11
+
+byte temp_low;
+byte temp_upp;
+byte temperatureInterval;
+byte rotationInterval_h;
+byte rotationInterval_m;
 
 /*
 		FUNCTIONS
 */
+
+// Reads configuration from the EEPROM
+void read_from_eeprom()
+{
+  Serial.println("-- Reading default configuration values from EEPROM --");
+  temp_low = EEPROM.read(TEMP_LOW_ADDR);
+  temp_upp = EEPROM.read(TEMP_UPP_ADDR);
+  temperatureInterval = EEPROM.read(TEMP_INTERVAL_ADDR);
+  rotationInterval_h = EEPROM.read(ROTATION_INTERVAL_H_ADDR);
+  rotationInterval_m = EEPROM.read(ROTATION_INTERVAL_M_ADDR);
+}
+
+// Writes configuration on the EEPROM
+void write_to_eeprom(int addr, int value)
+{
+  byte v = EEPROM.read(addr); // Actual value on EEPROM. Avoids saving it again.
+  
+  Serial.println("-- EEPROM WRITE NEW VALUES --");
+  Serial.print("   Address: ");
+  Serial.println(addr);
+  Serial.print("   Value: ");
+  Serial.println(v);
+  
+  if (value != v){
+    Serial.print("   Updating to: ");
+    Serial.println(value);
+    EEPROM.write(addr, value);
+  } else {
+    Serial.println("   Value correct! No need to update.");
+  }    
+}
 
 // Maximum temperature check function
 // Checks periodically the local temperature. If goes over a treshold, turn the two AC units.
@@ -81,13 +120,17 @@ void temperature_check()
       Serial.println(DHT11.humidity);
       Serial.print("   Check interval: ");
       Serial.print(temperatureInterval);
-      Serial.println(" ms.");
+      Serial.println(" s.");
       if (DHT11.temperature >= temp_upp){
          if(ac_all == false) {
-           Serial.println("   AC problem detected. Turning ON the two ACs");
+           Serial.println("   AC problem detected. Turning ON the two ACs.");
             // Set ALL ACs to run
-            ac_all = true; 
+            ac_all = true;
            check_ac();
+           temperatureTime = (long)(millis() + MINIMUM_OVERHEAT_TIME);
+           Serial.print("   Temperature check will be disabled for the next ");
+           Serial.print(MINIMUM_OVERHEAT_TIME);
+           Serial.println(" ms.");
          }
 
       }
@@ -138,26 +181,60 @@ void ac_rotate()
 	}
   	Serial.print("   AC after: ");
 	Serial.println(ac_now);
-	Serial.print("   Rotation interval: ");
-        Serial.print(rotationInterval);
-        Serial.println(" ms.");
-        
+        rotationTime = (long)(millis() + rotationInterval_h * 3600000 + rotationInterval_m * 60000); // Program the time to the next rotation.
 }		
 
 // Run commands via HTTP requests
 void run_command()
 {
-/*	Serial.print("   Running command ");
-	Serial.print(cmd);
-	Serial.print(" with ");
-	Serial.print(arg);
-	Serial.println(" as argument."); */
-	
-	/// COMMANDS section
-        if (cmd = "caca"){
-          Serial.println("   Running cacaoo");
+  	/// COMMANDS section
+        if (cmd == "temp_low"){
+//          Serial.print("   Configuring temp_low to ");
+//          Serial.println(arg.toInt());
+          write_to_eeprom(TEMP_LOW_ADDR, arg.toInt());
+          read_from_eeprom();
+//          temperature_check();
           cmd_status = 1;
-        } else {
+        }
+        else if (cmd == "temp_upp"){
+//          Serial.print("   Configuring temp_upp to ");
+//          Serial.println(arg.toInt());
+          write_to_eeprom(TEMP_UPP_ADDR, arg.toInt());
+          read_from_eeprom();
+//          temperature_check();
+          cmd_status = 1;
+        }
+        else if (cmd == "temp_int"){
+//          Serial.print("   Configuring temp_interval to ");
+//          Serial.println(arg.toInt());
+          write_to_eeprom(TEMP_INTERVAL_ADDR, arg.toInt());
+          read_from_eeprom();
+//          temperatureTime = (long)(millis()) + temperatureInterval * 1000; // Set next temperature check for now + temperatureInterval
+          cmd_status = 1;
+        }
+        else if (cmd == "rot_int"){
+          byte ind1;
+          ind1 = arg.indexOf(":");
+//          Serial.print("   Configuring rot_interval to ");
+//          Serial.println(arg);
+          write_to_eeprom(ROTATION_INTERVAL_H_ADDR, arg.substring(0, ind1).toInt()); // Write hours
+          write_to_eeprom(ROTATION_INTERVAL_M_ADDR, arg.substring(ind1+1, arg.length()).toInt()); // Write minutes
+          read_from_eeprom();
+//          rotationTime = (long)(millis() + rotationInterval_h * 3600000 + rotationInterval_m * 60000); // Set next AC rotation for now + rotationInterval
+          cmd_status = 1;
+        }
+          else if (cmd == "rot_now"){
+//          Serial.println("   FORCED to rotate the AC units.");
+          ac_rotate();
+          check_ac();
+          cmd_status = 1;
+        }
+          else if (cmd == "temp_now"){
+//          Serial.println("   FORCED to check the temperature.");
+          temperature_check();
+          cmd_status = 1; 
+        }
+        else {
           cmd_status = 3;
         }
 } 
@@ -180,8 +257,6 @@ void setup()
   pinMode(AC2PIN, OUTPUT);
   digitalWrite(AC1PIN, HIGH);
   digitalWrite(AC2PIN, HIGH);
-  temperatureTime = millis() + 240000;   // Set the 1st temperature check to 4 minutes from now
-  rotationTime = millis() + 300000;      // Set the 1st rotation check to 5 minutes from now
   
   // CONFIGURE SERIAL PORT FOR DEBUGGING //
   Serial.begin(57600);
@@ -192,12 +267,18 @@ void setup()
   Serial.print("PROGRAM VERSION: ");
   Serial.println(PROG_VERSION);
   Serial.println();
+  
+  // Read EEPROM configuration
+  read_from_eeprom();
+  temperatureTime = millis() + TEMPERATURE_T0;   // Set the 1st temperature check to 4 minutes from now
+  rotationTime = millis() + ROTATION_T0;      // Set the 1st rotation check to 5 minutes from now
 
   // Start the Ethernet connection and the server //
   byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
   Ethernet.begin(mac); // Automatic IP via DHCP , ip);
   server.begin();
-  Serial.print("server is at ");
+  Serial.println("-- Starting WebServer --");
+  Serial.print("   server is at ");
   Serial.println(Ethernet.localIP());
 }
 
@@ -211,7 +292,11 @@ void loop()
   if (client) {
     Serial.println("-- New Ethernet Client --");
     // an http request ends with a blank line
+    cmd_status = 0;
     boolean currentLineIsBlank = true;
+    String read_string = String(50); //string for fetching data from address
+    byte ind1 = 0;
+    byte ind2 = 0;
 
       while (client.connected()) {
       if (client.available()) {
@@ -235,13 +320,10 @@ void loop()
 				arg = read_string.substring(ind1, ind2);
 				Serial.print("   Argument is: ");
 				Serial.println(arg);
-//				Serial.println(read_string);
 				if (arg.length() != 0)
 					run_command();
-			  }else{
-                cmd_status = 0;
-            }
            }
+ }
           read_string = "";
 		  cmd = "";
 		  arg = "";
@@ -252,22 +334,25 @@ void loop()
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: text/html");
           client.println("Connection: close");  // the connection will be closed after completion of the response
-//	      client.println("Refresh: 5");  // refresh the page automatically every 5 sec
           client.println();
-//          client.println("<!DOCTYPE HTML>");
-//          client.println("<html>");
-          client.println("# temp,hum,cfg_temp_low,cfg_temp_upp,cfg_rot_interval,cmd_status");
+          client.println("temp,hum,act_unit,slaves_on,cfg_temp_low,cfg_temp_upp,cfg_temp_int,cfg_rot_int,cmd_status");
           client.print((float)DHT11.temperature, 2);
           client.print(",");
           client.print((float)DHT11.humidity, 2);
+          client.print(",");
+          client.print(ac_now);
+          client.print(",");
+          client.print(ac_all);
           client.print(",");
           client.print((float)temp_low, 1);
           client.print(",");
           client.print((float)temp_upp, 1);
           client.print(",");
-          client.print((float)temperatureInterval, 1);
+          client.print(temperatureInterval);
           client.print(",");
-          client.print((float)rotationInterval, 1);
+          client.print(rotationInterval_h);
+          client.print(":");
+          client.print(rotationInterval_m);
           client.print(",");
           client.print(cmd_status);
           client.println();
@@ -292,24 +377,19 @@ void loop()
     Serial.println("   Client disonnected.");
   }
   
-  time_now = millis(); // millisec
-  
   // Check ambient temperature
-  if ( (long)(time_now - temperatureTime) >= 0 )
+  if ( (long)(millis() - temperatureTime) >= 0 )
   {
+        temperatureTime = (long)(millis() + temperatureInterval * 1000);
 	temperature_check();
-//	check_ac();
-        temperatureTime = time_now + temperatureInterval;
 
   }
   
   // Check AC rotation
-  if (  time_now - rotationTime >= 0 )
+  if (  (long)(millis() - rotationTime) >= 0 )
   {
-//    temperature_check();
     ac_rotate();
     check_ac();
-    rotationTime = time_now + rotationInterval;
   }
 
 }
