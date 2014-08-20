@@ -137,6 +137,10 @@ void temperature_check()
       else if (ac_all == true && DHT11.temperature <= temp_low){
            ac_all = false;
            check_ac(); 
+           // This assures that the AC we just shut down will remain off for at least 4 minutes.
+           temperatureTime = millis() + TEMPERATURE_T0;   // Set the 1st temperature check to 4 minutes from now
+           rotationTime = rotationTime + ROTATION_T0;      // Set the 1st rotation check to 5 minutes later than the programmed
+
       }
     } else {
        Serial.println("   Error reading temperature/humidity sensor!");
