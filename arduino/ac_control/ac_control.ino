@@ -29,9 +29,9 @@ dht11 DHT11;
 
 // PIN DEFINITIONS
 #define BUTTON1PIN 0
-#define DHT11PIN 2
-#define AC1PIN 9
-#define AC2PIN 8
+#define DHT11PIN 8
+#define AC1PIN 4
+#define AC2PIN 5
 
 // SYSTEM PROTECTIONS
 #define TEMPERATURE_T0 240000 // Will wait 4 minutes to start check the temperature. In case of reset, we should give few minutes to the compressors.
@@ -39,7 +39,7 @@ dht11 DHT11;
 #define MINIMUM_OVERHEAT_TIME 1800000 // In case of a temperature overheating, temperature check will be disabled for 30min.
 
 //EEPROM ADDRESSES
-#define TEMP_LOW_ADDR 0  // degrees Celsius
+#define TEMP_LOWADDR 0  // degrees Celsius
 #define TEMP_UPP_ADDR 1  // degrees Celsius
 #define TEMP_INTERVAL_ADDR 2  // seconds
 #define ROTATION_INTERVAL_H_ADDR 3 // hours
@@ -78,7 +78,7 @@ byte rotationInterval_m;
 void read_from_eeprom()
 {
   Serial.println("-- Reading default configuration values from EEPROM --");
-  temp_low = EEPROM.read(TEMP_LOW_ADDR);
+  temp_low = EEPROM.read(TEMP_LOWADDR);
   temp_upp = EEPROM.read(TEMP_UPP_ADDR);
   temperatureInterval = EEPROM.read(TEMP_INTERVAL_ADDR);
   rotationInterval_h = EEPROM.read(ROTATION_INTERVAL_H_ADDR);
@@ -153,18 +153,18 @@ void check_ac()
 {
 	if (ac_all == true)    // Turn both ACs
 	{
-		digitalWrite(AC1PIN, LOW); 
-		digitalWrite(AC2PIN, LOW);
+		digitalWrite(AC1PIN, HIGH); 
+		digitalWrite(AC2PIN, HIGH);
 	}
 	else if (ac_now == 0)		// Turn AC1 only
 	{
-	    digitalWrite(AC1PIN, LOW);
-		digitalWrite(AC2PIN, HIGH);
+	    digitalWrite(AC1PIN, HIGH);
+		digitalWrite(AC2PIN, LOW);
 	}
 	else if (ac_now == 1)		// Turn AC2 only
 	{
-	    digitalWrite(AC2PIN, LOW);
-	    digitalWrite(AC1PIN, HIGH);
+	    digitalWrite(AC2PIN, HIGH);
+	    digitalWrite(AC1PIN, LOW);
 	}
 }
 
@@ -195,7 +195,7 @@ void run_command()
         if (cmd == "temp_low"){
 //          Serial.print("   Configuring temp_low to ");
 //          Serial.println(arg.toInt());
-          write_to_eeprom(TEMP_LOW_ADDR, arg.toInt());
+          write_to_eeprom(TEMP_LOWADDR, arg.toInt());
           read_from_eeprom();
 //          temperature_check();
           cmd_status = 1;
@@ -259,8 +259,8 @@ void setup()
   // SETUP PINS AND TIME TO START THE UNITS //
   pinMode(AC1PIN, OUTPUT);
   pinMode(AC2PIN, OUTPUT);
-  digitalWrite(AC1PIN, HIGH);
-  digitalWrite(AC2PIN, HIGH);
+  digitalWrite(AC1PIN, LOW);
+  digitalWrite(AC2PIN, LOW);
   
   // CONFIGURE SERIAL PORT FOR DEBUGGING //
   Serial.begin(57600);
